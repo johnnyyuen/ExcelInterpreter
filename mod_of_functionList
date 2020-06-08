@@ -1,0 +1,18 @@
+Public Function getValueBySourceColB(currentRow As Integer, currentColumn As Integer, bValue As String, Optional colname As String) As String
+    If (Left(UCase(bValue), 3) = "BHK") Then
+        getValueBySourceColB = "CCBHK" & colname
+    Else
+        getValueBySourceColB = "CCBA" & colname
+    End If
+End Function
+
+Public Function genSerialNo(currentRow As Integer, currentColumn As Integer) As Integer
+    Debug.Print currentRow, currentColumn
+    
+    Dim myRangeString As String
+    Dim currColName As String
+    
+    currColName = convertColNumberToChar(CLng(currentColumn))
+    myRangeString = currColName & "1:" & currColName & (currentRow - 1)
+    genSerialNo = Application.WorksheetFunction.Max(Range(myRangeString)) + 1
+End Function
