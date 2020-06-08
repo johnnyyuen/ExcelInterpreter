@@ -1,0 +1,286 @@
+Public sourceHeaderList As Scripting.Dictionary
+Public desHeaderList As Scripting.Dictionary
+Public rulesHeaderList As Scripting.Dictionary
+Public doubleQuote As String
+
+
+Function WorksheetExists(shtName As String, Optional wb As Workbook) As Boolean
+    Dim sht As Worksheet
+
+    If wb Is Nothing Then Set wb = ThisWorkbook
+    On Error Resume Next
+    Set sht = wb.Sheets(shtName)
+    On Error GoTo 0
+    WorksheetExists = Not sht Is Nothing
+End Function
+
+Function GenHeaderListBySheetName(sheetName As String) As Scripting.Dictionary
+
+    Set headerList = New Scripting.Dictionary
+    
+    If WorksheetExists(sheetName) Then
+        Worksheets(sheetName).Activate
+    Else
+        Debug.Print ("Sheet name :" & sheetName & " does not exist!!")
+    End If
+    
+    Dim lastColumn As Integer
+    
+    foundColumnValue = 0
+    lastColumn = Cells(1, 2000).End(xlToLeft).Column
+    
+    For currentColumn = 1 To lastColumn
+        
+        If IsEmpty(Cells(1, currentColumn).Value) = False Then
+            If Not headerList.Exists(Cells(1, currentColumn).Value) Then
+                headerList.Add Cells(1, currentColumn).Value, currentColumn
+            Else
+                MsgBox ("Error!! Column Name " & "already exist")
+            End If
+        Else
+            Debug.Print ("Warning!! Column Name at Column " & currentColumn & " is empty")
+        End If
+    Next currentColumn
+    
+    Set GenHeaderListBySheetName = headerList
+
+End Function
+
+Sub GenHeaderList()
+
+    Set sourceHeaderList = New Scripting.Dictionary
+    Set desHeaderList = New Scripting.Dictionary
+    Set rulesHeaderList = New Scripting.Dictionary
+    
+    Set sourceHeaderList = GenHeaderListBySheetName("POMSource")
+    Set desHeaderList = GenHeaderListBySheetName("Sheet1")
+    Set rulesHeaderList = GenHeaderListBySheetName("Rules")
+    
+    Dim key As Variant
+    For Each key In desHeaderList.Keys
+        Debug.Print key, desHeaderList(key)
+    Next key
+
+End Sub
+
+Sub importPOMSData()
+    
+    Dim tempDataSheet As String
+    Dim sourceDir As String
+    Dim sourceFileName As String
+    Dim desWB As Workbook 'Current Working Workbook
+    Dim sourceWB As Workbook 'The one created by Production support team
+    Dim desWS As Worksheet
+    Dim sourceWS As Worksheet
+    Dim tbl As ListObject
+    Dim lCopyLastRow As Long
+    Dim lCopyLastColumn As Long
+    Dim ldestLastRow As Long
+    Dim lastImportColumnCount As Range
+    
+
+    
+    
+    tempDataSheet = "POMSource"
+    Set desWB = ActiveWorkbook
+    Application.DisplayAlerts = False
+    
+    
+    If WorksheetExists(tempDataSheet) Then
+        Worksheets(tempDataSheet).Delete
+    End If
+        
+    desWB.Sheets.Add.Name = tempDataSheet
+    Set desWS = desWB.Sheets(tempDataSheet)
+    
+    Application.DisplayAlerts = True
+    
+    sourceDir = desWB.Worksheets("Start").Range("POMSDIR").Value
+    sourceFileName = desWB.Worksheets("Start").Range("POMSFILE").Value
+    
+    Debug.Print sourceDir
+    Debug.Print sourceFileName
+    
+    Set sourceWB = Workbooks.Open(sourceDir & "\" & sourceFileName)
+    Set sourceWS = sourceWB.Worksheets("Worksheet")
+    
+    lCopyLastRow = sourceWS.Cells(sourceWS.Rows.Count, "A").End(xlUp).Row
+    lCopyLastColumn = sourceWS.Cells(1, sourceWS.Columns.Count).End(xlToLeft).Column
+    EndRange = convertColNumberToChar(lCopyLastColumn) & lCopyLastRow
+    sourceWS.Range("A1:" & EndRange).Copy
+    desWS.Range("A1").PasteSpecial Paste:=xlPasteValues
+    desWB.Activate
+    desWS.Select
+    
+    
+    Set desWB = Nothing
+    Set sourceWB = Nothing
+    Set desWS = Nothing
+    Set sourceWS = Nothing
+
+End Sub
+
+
+
+Function convertColNumberToChar(ColValue As Long) As String
+    If (ColValue > 676) Then
+        MsgBox ("Too Many column!!")
+        Stop
+    
+    End If
+    
+    If (ColValue > 26) Then
+        convertColNumberToChar = Chr(Asc("A") + (Int(ColValue / 26) - 1)) & Chr(Asc("A") + (ColValue Mod 26) - 1)
+    Else
+        convertColNumberToChar = Chr(Asc("A") + ColValue - 1)
+    End If
+End Function
+
+Function LastModifiedFile(dirName As String) As String
+    
+    Dim fName As String, fileTime As Date, fileName As String, latestFile As String
+    'dirName = "J:\MAX\ITSM\"
+    fName = Dir(dirName & "*.xlsx")
+    latestFile = fName
+    fileTime = FileDateTime(dirName & fName)
+    While fName <> ""
+        If FileDateTime(dirName & fName) > fileTime Then
+            latestFile = fName
+            fileTime = FileDateTime(dirName & fName)
+        End If
+    fName = Dir()
+    Wend
+    If latestFile = "" Then
+        MsgBox "There are no files in the directory"
+        Stop
+'    Else
+        'Workbooks.Open "C:\My Documents\" & latestFile
+'        MsgBox latestFile
+    End If
+    
+    LastModifiedFile = dirName & latestFile
+End Function
+
+
+Sub CopyFromSourceToTarget()
+
+    Dim copyFromWS, pasteToWS As Worksheet
+    Dim pasteToRange, pasteToLastCell As Range
+    Dim copyFromRange, copyFromLastCell As Range
+    Dim rulesWS As Worksheet
+    Dim ruleString() As String
+    
+    Dim pasteToCurrentColumn, pasteToCurrentRow As Integer
+    
+    Dim formularContent As String
+    Dim textOrColumnName As Integer
+    
+    Set copyFromWS = ActiveWorkbook.Sheets("POMSource")
+    Set pasteToWS = ActiveWorkbook.Sheets("Sheet1")
+    Set rulesWS = ActiveWorkbook.Sheets("Rules")
+    
+    pasteToWS.Activate
+    
+    Set pasteToRange = pasteToWS.UsedRange
+    Set pasteToLastCell = pasteToRange.Cells(pasteToRange.Cells.Count)
+    Debug.Print ("pasteTo Range (col, row) :" & pasteToLastCell.Column & " " & pasteToLastCell.Row)
+    
+    Set copyFromRange = copyFromWS.UsedRange
+    Set copyFromLastCell = copyFromRange.Cells(copyFromRange.Cells.Count)
+    Debug.Print ("copyFrom Range (col, row) :" & copyFromLastCell.Column & " " & copyFromLastCell.Row)
+    
+    copyTypeColName = rulesHeaderList("Copy type")
+    copyRuleColName = rulesHeaderList("Copy rule")
+    
+    
+    For copyFromCurrentRow = 2 To copyFromLastCell.Row
+        pasteToCurrentRow = pasteToLastCell.Row + (copyFromCurrentRow - 1)
+        For pasteToCurrentColumn = 1 To pasteToLastCell.Column
+            On Error Resume Next
+            Debug.Print ("Working on " & pasteToCurrentColumn)
+            
+            Select Case rulesWS.Cells(pasteToCurrentColumn + 1, copyTypeColName).Value
+                Case Is = "D" 'Will be executed if the the rules content is directly copy from source to target
+                    If Not Application.WorksheetFunction.IsError(rulesWS.Cells(pasteToCurrentColumn + 1, copyRuleColName).Value) Then
+                        cellContent = cleanSpace(UCase(rulesWS.Cells(pasteToCurrentColumn + 1, copyRuleColName).Value))
+                        If (Len(cellContent) > 2) And (Len(cellContent) <= 0) Then
+                            Debug.Print ("Warnning value" & cellContent & ", may be not a valid column name")
+                        Else
+                            pasteToWS.Cells(pasteToCurrentRow, pasteToCurrentColumn).Value = copyFromWS.Cells(copyFromCurrentRow, cellContent).Value
+                        End If
+                    End If
+                    
+                Case Is = "F" 'Execute if the rules containing a Function
+                    Debug.Print ("This is cell content ->" & rulesWS.Cells(pasteToCurrentColumn + 1, copyRuleColName).Value)
+                    ruleString = Split(rulesWS.Cells(pasteToCurrentColumn + 1, copyRuleColName).Value, "/")
+                    Select Case (UBound(ruleString) - LBound(ruleString) + 1)
+                        Case Is = 3
+                            funcToCall = ruleString(0)
+                            getFromColumn = copyFromWS.Cells(copyFromCurrentRow, ruleString(1)).Value
+                            appendWithColumn = copyFromWS.Cells(copyFromCurrentRow, ruleString(2)).Value
+                            'Debug.Print (Application.Run(funcToCall, getFromColumn, appendWithColumn))
+                            pasteToWS.Cells(pasteToCurrentRow, pasteToCurrentColumn).Value = Application.Run(funcToCall, pasteToCurrentRow, pasteToCurrentColumn, getFromColumn, appendWithColumn)
+                        Case Is = 2
+                            funcToCall = ruleString(0)
+                            getFromColumn = copyFromWS.Cells(copyFromCurrentRow, ruleString(1)).Value
+                            pasteToWS.Cells(pasteToCurrentRow, pasteToCurrentColumn).Value = Application.Run(funcToCall, pasteToCurrentRow, pasteToCurrentColumn, getFromColumn)
+                        Case Is = 1
+                            funcToCall = ruleString(0)
+                            pasteToWS.Cells(pasteToCurrentRow, pasteToCurrentColumn).Value = Application.Run(funcToCall, pasteToCurrentRow, pasteToCurrentColumn)
+                        Case Else
+                    End Select
+                
+                Case Is = "L" 'Execute if the rules containing a Excel formular
+                    Debug.Print ("This is cell content ->" & rulesWS.Cells(pasteToCurrentColumn + 1, copyRuleColName).Value)
+                    ruleString = Split(rulesWS.Cells(pasteToCurrentColumn + 1, copyRuleColName).Value, "%") 'Expecting % as the deliminator
+                    For i = 0 To UBound(ruleString)
+                        Debug.Print (i & "=>" & ruleString(i))
+                    Next i
+
+                    formularContent = "="
+                    textOrColumnName = 0
+                    For copyruleSplitContentIndex = 0 To (UBound(ruleString) - LBound(ruleString))
+                        If textOrColumnName = 0 Then
+                            formularContent = formularContent & ruleString(copyruleSplitContentIndex)
+                            textOrColumnName = 1
+                        Else
+                            formularContent = formularContent & doubleQuote + copyFromWS.Cells(copyFromCurrentRow, ruleString(copyruleSplitContentIndex)).Value & doubleQuote
+                            textOrColumnName = 0
+                        End If
+                        'Debug.Print formularContent
+                    Next copyruleSplitContentIndex
+                    theRange = convertColNumberToChar(CLng(pasteToCurrentColumn)) & pasteToCurrentRow
+                    pasteToWS.Range(theRange).Formula = formularContent
+                    
+                Case Else
+                    Debug.Print ("Unidentified option in " & rulesWS.Name & " Column " & copyTypeColName & ". Expecting F/D/L but got " & rulesWS.Cells(pasteToCurrentColumn + 1, copyTypeColName).Value & "!!")
+            End Select
+            
+            
+        Next pasteToCurrentColumn
+    Next copyFromCurrentRow
+        
+    
+    Set pasteToRange = Nothing
+    Set pasteToLastCell = Nothing
+    Set copyFromRange = Nothing
+    Set copyFromLastCell = Nothing
+    
+
+End Sub
+
+Function cleanSpace(contentStr As String) As String
+
+    cleanSpace = Replace(contentStr, Chr(160), "")
+    cleanSpace = Application.WorksheetFunction.Clean(Trim(cleanSpace))
+
+End Function
+
+Sub startIt()
+    
+    doubleQuote = Chr(34)
+    Call importPOMSData
+    Call GenHeaderList
+    Call CopyFromSourceToTarget
+    
+End Sub
